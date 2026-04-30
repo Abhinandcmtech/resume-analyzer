@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from flask import Flask, request, jsonify
 from analyzer import analyze_resume
 
