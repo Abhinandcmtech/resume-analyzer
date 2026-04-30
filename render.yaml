@@ -1,0 +1,40 @@
+services:
+  # 1. AI Service (Python/Flask) — deploy this first
+  - type: web
+    name: resume-ai-service
+    runtime: python
+    rootDir: ai-service
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false  # set in Render dashboard
+
+  # 2. Backend (Node/Express) — deploy after AI service
+  - type: web
+    name: resume-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: MONGO_URI
+        sync: false  # paste your MongoDB Atlas connection string
+      - key: JWT_SECRET
+        generateValue: true  # Render auto-generates a secure random value
+      - key: AI_SERVICE_URL
+        sync: false  # paste the AI service URL from step 1, e.g. https://resume-ai-service.onrender.com
+
+  # 3. Frontend (Vite/React static site) — deploy after backend
+  - type: static
+    name: resume-frontend
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false  # paste the backend URL from step 2 + /api, e.g. https://resume-backend.onrender.com/api
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
