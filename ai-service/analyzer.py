@@ -1,10 +1,11 @@
 import io
 import json
+import os
 
-import anthropic
+import google.generativeai as genai
 import PyPDF2
 
-client = anthropic.Anthropic()
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
 SYSTEM_PROMPT = """You are an expert resume analyst and career coach with deep knowledge of hiring practices across all industries. Your task is to analyze resumes against job requirements and provide comprehensive, actionable feedback.
 
@@ -19,7 +20,7 @@ Carefully read the entire resume and extract ALL skills mentioned or implied:
 - Tools and software proficiency
 
 ### 2. Job Requirements Analysis
-Based on the target job title, identify typical requirements for that role:
+Based on the target job title (and job description if provided), identify typical requirements for that role:
 - Core technical skills that are essential
 - Soft skills that employers prioritize
 - Industry-standard tools and technologies
@@ -59,6 +60,12 @@ Return ONLY a JSON object with exactly these fields:
 
 Be thorough, specific, and constructive. Base missing_skills on real industry expectations for the target role."""
 
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    system_instruction=SYSTEM_PROMPT,
+    generation_config={"response_mime_type": "application/json"},
+)
+
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
     reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
@@ -73,36 +80,5 @@ def analyze_resume(file_bytes: bytes, target_job: str, job_description: str = ""
     else:
         user_content = f"Target Job: {target_job}\n\nResume Text:\n{resume_text}"
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        system=[{
-            "type": "text",
-            "text": SYSTEM_PROMPT,
-            "cache_control": {"type": "ephemeral"},
-        }],
-        output_config={
-            "format": {
-                "type": "json_schema",
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "match_score": {"type": "integer"},
-                        "matched_skills": {"type": "array", "items": {"type": "string"}},
-                        "missing_skills": {"type": "array", "items": {"type": "string"}},
-                        "extracted_skills": {"type": "array", "items": {"type": "string"}},
-                        "suggestions": {"type": "array", "items": {"type": "string"}},
-                    },
-                    "required": ["match_score", "matched_skills", "missing_skills", "extracted_skills", "suggestions"],
-                    "additionalProperties": False,
-                },
-            }
-        },
-        messages=[{
-            "role": "user",
-            "content": user_content,
-        }],
-    )
-
-    text = next(b.text for b in response.content if b.type == "text")
-    return json.loads(text)
+    response = model.generate_content(user_content)
+    return json.loads(response.text)
